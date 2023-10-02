@@ -1,0 +1,127 @@
+---
+title: "MOON analysis - example"
+author: "Anne-Claire Kroger"
+date: "2023-09-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(cosmosR)
+library(decoupleR)
+library(data.table)
+library(pheatmap)
+library(ggplot2)
+
+```
+
+# Import the data
+
+The example data provided here is the ouput of a MOFA analysis on for the glioblastoma (gbm) cohort of the cptac data (https://paynelab.github.io/cptac/). MOFA was run with the RNA, proteomics and phosphoproteomics.
+
+```{r}
+load("moon_example_data.RData")
+
+#meta_network_filtered: the PKN oulled from Omnipath, filtered & cleaned
+#gbm_weights_rna: rna weights output from MOFA analysis for all factors retrieved with the "get_weights" function
+
+```
+
+# Compute TF actvity from MOFA output with decoupleR
+```{r}
+#load TF targets from collectri
+TFN <- decoupleR::get_collectri()
+
+#run ulm algorithm
+gbm_tf <- decoupleR::run_ulm(gbm_weights_rna, 
+                              TFN, 
+                              .source='source', 
+                              .target='target', 
+                              minsize = 5) 
+```
+
+```{r}
+gbm_tf_df <- as.data.frame(dcast(as.data.table(gbm_tf[,2:4]), source ~ condition, value.var = "score"))
+rownames(gbm_tf_df) <- gbm_tf_df$source
+gbm_tf_df <- gbm_tf_df[,-1]
+
+scores_tf_top <- gbm_tf_df[apply(gbm_tf_df,1,function(x){max(abs(x)) > 7}),]
+
+pheatmap(scores_tf_top, treeheight_row = 0, treeheight_col = 0)
+```
+
+
+# Filter & compress the network according to our input TFs
+```{r}
+TF_data <- gbm_tf #TF activity results
+RNA_data <- gbm_weights_rna #rna weights output from MOFA analysis 
+factor_n <- 1 #MOFA factor number for this analysis to run on 
+
+n_steps <- 6 #number of connection layers to be considered
+
+#RNA input for later filtering
+RNA_input <- RNA_data[,factor_n]
+names(RNA_input) <- rownames(RNA_data)
+
+#TF input from MOFA as downstream input
+TF_inputs_f <- TF_data[TF_data$condition == paste0("Factor", factor_n),]
+
+#TF results for one factor as named vector
+TF_inputs <- TF_inputs_f$score
+names(TF_inputs) <- TF_inputs_f$source
+downstream_inputs <- TF_inputs
+
+#filter TFs (downstream input) for TFs actually in the PKN
+downstream_inputs_filtered <- cosmosR:::filter_input_nodes_not_in_pkn(downstream_inputs, 
+                                                                      meta_network_filtered)
+
+#filter PKN for TFs that are downstream of our kinases we have in the network 
+meta_network_filtered <- cosmosR:::keep_observable_neighbours(meta_network_filtered, 
+                                                              n_steps, 
+                                                              names(downstream_inputs_filtered))
+
+#compress PKN in a way that nodes with the same children are united into one node (names get merges with "_")
+meta_network_compressed_list <- compress_same_children(meta_network_filtered, 
+                                                       sig_input = c("wig"=""), #give it an empty name vector
+                                                       metab_input = downstream_inputs_filtered)
+meta_network_compressed <- meta_network_compressed_list$compressed_network
+
+#cleanup again to remove empty/ redunant connections
+meta_network_compressed <- meta_network_cleanup(meta_network_compressed)
+
+```
+
+# Run MOON in interations
+```{r}
+meta_network_rec_to_TFmetab <- meta_network_compressed
+
+before <- 1
+after <- 0
+i <- 1
+while (before != after & i < 10) {
+  before <- length(meta_network_rec_to_TFmetab[,1])
+  recursive_decoupleRnival_res <- cosmosR::moon( downstream_input = downstream_inputs_filtered, 
+                                                 meta_network = meta_network_rec_to_TFmetab, 
+                                                 n_layers = n_steps, 
+                                                 statistic = "ulm") 
+  
+  meta_network_rec_to_TFmetab <- filter_incohrent_TF_target(recursive_decoupleRnival_res, TFN, meta_network_rec_to_TFmetab, RNA_input)
+  after <- length(meta_network_rec_to_TFmetab[,1])
+  i <- i + 1
+}
+
+```
+```{r}
+scores_kin_top <- recursive_decoupleRnival_res[abs(recursive_decoupleRnival_res$score) > 4 & recursive_decoupleRnival_res$level != 0,]
+
+ggplot(scores_kin_top, aes(x=reorder(as.factor(source), -score), y=score, fill= as.factor(level))) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("kinases/ nodes") +
+  guides(fill=guide_legend(title="level"))
+
+```
+
+
+
