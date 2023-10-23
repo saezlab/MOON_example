@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+library(readr)
 library(cosmosR)
 library(decoupleR)
 library(data.table)
@@ -31,8 +32,9 @@ load("moon_example_data.RData")
 # Compute TF actvity from MOFA output with decoupleR
 ```{r}
 #load TF targets from collectri
-TFN <- decoupleR::get_collectri()
-
+# TFN <- decoupleR::get_collectri()
+# save(TFN, file = "TFN.RData")
+load("TFN.RData")
 #run ulm algorithm
 gbm_tf <- decoupleR::run_ulm(gbm_weights_rna, 
                               TFN, 
@@ -58,7 +60,7 @@ TF_data <- gbm_tf #TF activity results
 RNA_data <- gbm_weights_rna #rna weights output from MOFA analysis 
 factor_n <- 1 #MOFA factor number for this analysis to run on 
 
-n_steps <- 6 #number of connection layers to be considered
+n_steps <- 3 #number of connection layers to be considered
 
 #RNA input for later filtering
 RNA_input <- RNA_data[,factor_n]
@@ -94,20 +96,20 @@ meta_network_compressed <- meta_network_cleanup(meta_network_compressed)
 
 # Run MOON in interations
 ```{r}
-meta_network_rec_to_TFmetab <- meta_network_compressed
+meta_network_compressed_current <- meta_network_compressed
 
 before <- 1
 after <- 0
 i <- 1
 while (before != after & i < 10) {
-  before <- length(meta_network_rec_to_TFmetab[,1])
+  before <- length(meta_network_compressed_current[,1])
   recursive_decoupleRnival_res <- cosmosR::moon( downstream_input = downstream_inputs_filtered, 
-                                                 meta_network = meta_network_rec_to_TFmetab, 
+                                                 meta_network = meta_network_compressed_current, 
                                                  n_layers = n_steps, 
                                                  statistic = "ulm") 
   
-  meta_network_rec_to_TFmetab <- filter_incohrent_TF_target(recursive_decoupleRnival_res, TFN, meta_network_rec_to_TFmetab, RNA_input)
-  after <- length(meta_network_rec_to_TFmetab[,1])
+  meta_network_compressed_current <- filter_incohrent_TF_target(recursive_decoupleRnival_res, TFN, meta_network_compressed_current, RNA_input)
+  after <- length(meta_network_compressed_current[,1])
   i <- i + 1
 }
 
@@ -123,5 +125,45 @@ ggplot(scores_kin_top, aes(x=reorder(as.factor(source), -score), y=score, fill= 
 
 ```
 
+```{r}
+node_signatures <- meta_network_compressed_list$node_signatures
+duplicated_parents <- meta_network_compressed_list$duplicated_signatures
+duplicated_parents_df <- data.frame(duplicated_parents)
+duplicated_parents_df$source_original <- row.names(duplicated_parents_df)
+names(duplicated_parents_df)[1] <- "source"
 
+addons <- data.frame(names(node_signatures)[-which(names(node_signatures) %in% duplicated_parents_df$source_original)]) 
+names(addons)[1] <- "source"
+addons$source_original <- addons$source
+
+final_leaves <- meta_network_compressed_current[!(meta_network_compressed_current$target %in% meta_network_compressed_current$source),"target"]
+final_leaves <- as.data.frame(cbind(final_leaves,final_leaves))
+names(final_leaves) <- names(addons)
+
+addons <- as.data.frame(rbind(addons,final_leaves))
+
+mapping_table <- as.data.frame(rbind(duplicated_parents_df,addons))
+
+recursive_decoupleRnival_res <- merge(recursive_decoupleRnival_res, mapping_table, by = "source")
+
+#save the whole res for later
+recursive_decoupleRnival_res <- recursive_decoupleRnival_res[,c(4,2,3)]
+
+#Add the RNA data to the attribute table
+RNA_data <- as.data.frame(gbm_weights_rna[,factor_n,drop = F])
+RNA_data$source_original <- row.names(RNA_data)
+RNA_data <- RNA_data[,c(2,1)]
+names(RNA_data)[2] <- "RNA_data"
+
+recursive_decoupleRnival_res <- merge(recursive_decoupleRnival_res, RNA_data, by = "source_original",all.x = T)
+
+```
+
+```{r}
+SIF <- meta_network_filtered
+names(SIF)[3] <- "sign"
+write_csv(recursive_decoupleRnival_res, file = "results/node_attributes.csv")
+write_csv(SIF, file = "results/SIF_network.csv")
+
+```
 
