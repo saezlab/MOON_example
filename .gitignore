@@ -3,3 +3,4 @@
 .RData
 .Ruserdata
 omnipathr-log/**
+.DS_Store
