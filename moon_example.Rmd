@@ -103,19 +103,19 @@ after <- 0
 i <- 1
 while (before != after & i < 10) {
   before <- length(meta_network_compressed_current[,1])
-  recursive_decoupleRnival_res <- cosmosR::moon( downstream_input = downstream_inputs_filtered, 
+  MOON_res <- cosmosR::moon( downstream_input = downstream_inputs_filtered, 
                                                  meta_network = meta_network_compressed_current, 
                                                  n_layers = n_steps, 
                                                  statistic = "ulm") 
   
-  meta_network_compressed_current <- filter_incohrent_TF_target(recursive_decoupleRnival_res, TFN, meta_network_compressed_current, RNA_input)
+  meta_network_compressed_current <- filter_incohrent_TF_target(MOON_res, TFN, meta_network_compressed_current, RNA_input)
   after <- length(meta_network_compressed_current[,1])
   i <- i + 1
 }
 
 ```
 ```{r}
-scores_kin_top <- recursive_decoupleRnival_res[abs(recursive_decoupleRnival_res$score) > 4 & recursive_decoupleRnival_res$level != 0,]
+scores_kin_top <- MOON_res[abs(MOON_res$score) > 4 & MOON_res$level != 0,]
 
 ggplot(scores_kin_top, aes(x=reorder(as.factor(source), -score), y=score, fill= as.factor(level))) +
   geom_bar(stat = "identity") +
@@ -124,7 +124,7 @@ ggplot(scores_kin_top, aes(x=reorder(as.factor(source), -score), y=score, fill= 
   guides(fill=guide_legend(title="level"))
 
 ```
-
+Decompress the network score results and save them as CSV for cytoscape.
 ```{r}
 node_signatures <- meta_network_compressed_list$node_signatures
 duplicated_parents <- meta_network_compressed_list$duplicated_signatures
@@ -144,10 +144,10 @@ addons <- as.data.frame(rbind(addons,final_leaves))
 
 mapping_table <- as.data.frame(rbind(duplicated_parents_df,addons))
 
-recursive_decoupleRnival_res <- merge(recursive_decoupleRnival_res, mapping_table, by = "source")
+MOON_res <- merge(MOON_res, mapping_table, by = "source")
 
 #save the whole res for later
-recursive_decoupleRnival_res <- recursive_decoupleRnival_res[,c(4,2,3)]
+MOON_res <- MOON_res[,c(4,2,3)]
 
 #Add the RNA data to the attribute table
 RNA_data <- as.data.frame(gbm_weights_rna[,factor_n,drop = F])
@@ -155,15 +155,36 @@ RNA_data$source_original <- row.names(RNA_data)
 RNA_data <- RNA_data[,c(2,1)]
 names(RNA_data)[2] <- "RNA_data"
 
-recursive_decoupleRnival_res <- merge(recursive_decoupleRnival_res, RNA_data, by = "source_original",all.x = T)
+MOON_res <- merge(MOON_res, RNA_data, by = "source_original",all.x = T)
 
 ```
 
 ```{r}
 SIF <- meta_network_filtered
 names(SIF)[3] <- "sign"
-write_csv(recursive_decoupleRnival_res, file = "results/node_attributes.csv")
+write_csv(MOON_res, file = "results/node_attributes.csv")
 write_csv(SIF, file = "results/SIF_network.csv")
+```
+
+Create a reduced soltuion network from a given upstream node.
+```{r}
+plot(density(MOON_res$score))
+
+
+solution_network <- reduce_solution_network(decoupleRnival_res = MOON_res, 
+                                            meta_network = meta_network_filtered,
+                                            cutoff = 2, 
+                                            upstream_input = c("AATK" = 1), 
+                                            RNA_input = RNA_input, 
+                                            n_steps = n_steps)
+
+SIF_reduced <- solution_network$SIF
+names(SIF_reduced)[3] <- "sign"
+ATT_reduced <- solution_network$ATT
+
+write_csv(ATT_reduced, file = "results/ATT_reduced.csv")
+write_csv(SIF_reduced, file = "results/SIF_reduced.csv")
 
 ```
+
 
