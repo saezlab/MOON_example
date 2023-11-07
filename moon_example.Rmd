@@ -50,9 +50,32 @@ gbm_tf_df <- gbm_tf_df[,-1]
 
 scores_tf_top <- gbm_tf_df[apply(gbm_tf_df,1,function(x){max(abs(x)) > 7}),]
 
+
+
+
 pheatmap(scores_tf_top, treeheight_row = 0, treeheight_col = 0)
 ```
 
+
+```{r}
+TFN_TF <- TFN[TFN$source == "REST",c(2,3)]
+RNA_to_merge <- as.data.frame(gbm_weights_rna[,factor_n,drop = F])
+RNA_to_merge$target <- row.names(RNA_to_merge)
+TFN_TF <- merge(TFN_TF, RNA_to_merge)
+names(TFN_TF)[3] <- "RNA"
+
+addon <- as.data.frame(gbm_weights_rna[!(row.names(gbm_weights_rna) %in% TFN_TF$target),factor_n,drop = F])
+addon$mor <- 0
+addon$target <- row.names(addon)
+names(addon)[1] <- "RNA"
+
+TFN_TF <- as.data.frame(rbind(TFN_TF, addon))
+
+ggplot(TFN_TF, aes(x = mor, y = RNA)) + geom_point() +
+  stat_summary(fun.data= mean_cl_normal) +
+  geom_smooth(method='lm', formula= y~x) +
+  theme_minimal()
+```
 
 # Filter & compress the network according to our input TFs
 ```{r}
