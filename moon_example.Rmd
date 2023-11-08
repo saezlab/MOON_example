@@ -50,14 +50,13 @@ gbm_tf_df <- gbm_tf_df[,-1]
 
 scores_tf_top <- gbm_tf_df[apply(gbm_tf_df,1,function(x){max(abs(x)) > 7}),]
 
-
-
-
 pheatmap(scores_tf_top, treeheight_row = 0, treeheight_col = 0)
 ```
 
-
+Here we can show how what the data behind a TF activty estimation actually looks like.
 ```{r}
+factor_n <- 2
+
 TFN_TF <- TFN[TFN$source == "REST",c(2,3)]
 RNA_to_merge <- as.data.frame(gbm_weights_rna[,factor_n,drop = F])
 RNA_to_merge$target <- row.names(RNA_to_merge)
