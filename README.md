@@ -1,6 +1,6 @@
 # MOON_example
 
-Example script for MOON kinase activity prediction based on TF activity as input. TF activity is defined here as downstream input as only kinases are predicted that have a upstream link in Omnipath with a defined number of steps (here 6). A solution network can then be generated to connect the TF activties with kinase activties calculated with phosphoproteomic data.
+Example script (see: https://github.com/saezlab/MOON_example/blob/main/moon_example.Rmd) for MOON kinase activity prediction based on TF activity as input. TF activity is defined here as downstream input as only kinases are predicted that have a upstream link in Omnipath with a defined number of steps (here 6). A solution network can then be generated to connect the TF activties with kinase activties calculated with phosphoproteomic data.
 
 Input data is the glioblastoma cohort from the [CPTAC consortium data](https://github.com/PayneLab/cptac). Transcriptomics, proteomics and phosphoproteomics were analysed with [MOFA](https://biofam.github.io/MOFA2/) and the transcriptomics weights were used in this MOON analysis.
 
